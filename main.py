@@ -1,65 +1,139 @@
 import requests
-from bs4 import BeautifulSoup
+import os
 import csv
+from bs4 import BeautifulSoup
 
-# URL de la page sport et jeux
-url = "https://books.toscrape.com/catalogue/the-book-of-basketball-the-nba-according-to-the-sports-guy_232/index.html"
+# Récupérer le contenu HTML
+base_url = "https://books.toscrape.com/"
+url = f"{base_url}index.html"
 
-reponse = requests.get(url)
-soup = BeautifulSoup(reponse.text, "html.parser")
+response = requests.get(url)
+soup = BeautifulSoup(response.text, "html.parser")
 
-product_page_url = url
-universal_product_code = soup.find("th", string="UPC").find_next("td").string.strip()
-title = soup.find("h1").string.strip()
-price_including_tax = (
-    soup.find("th", string="Price (incl. tax)").find_next("td").string.strip()
-)
-price_excluding_tax = (
-    soup.find("th", string="Price (excl. tax)").find_next("td").string.strip()
-)
-number_available = soup.find("th", string="Availability").find_next("td").string.strip()
-product_description = soup.find("meta", {"name": "description"})["content"].strip()
-category = soup.find("ul", class_="breadcrumb").find_all("li")[2].text.strip()
-review_rating = soup.find("p", class_="star-rating")["class"][1]
-image_url = soup.find("img")["src"]
-image_url = "https://books.toscrape.com" + image_url
+# trouver le lien de chaque catégorie
+categories = soup.find("ul", class_="nav nav-list").find_all("a")[1:]
 
 
-livre_data = [
-    {
-        "product_page_url": product_page_url,
-        "universal_product_code": universal_product_code,
-        "title": title,
-        "price_including_tax": price_including_tax,
-        "price_excluding_tax": price_excluding_tax,
-        "number_available": number_available,
-        "product_description": product_description,
-        "category": category,
-        "review_rating": review_rating,
-        "image_url": image_url,
+def livre_data(livre_url):
+    response = requests.get(livre_url)
+    soup = BeautifulSoup(response.text, "html.parser")
+    table = soup.find("table", class_="table table-striped")
+    upc = table.find("th", string="UPC").find_next("td").string.strip()
+    type_de_produit = (
+        table.find("th", string="Product Type").find_next("td").string.strip()
+    )
+    price_excl_tax = (
+        table.find("th", string="Price (excl. tax)").find_next("td").string.strip()
+    )
+    price_incl_tax = (
+        table.find("th", string="Price (incl. tax)").find_next("td").string.strip()
+    )
+    tax = table.find("th", string="Tax").find_next("td").string.strip()
+    availability = (
+        table.find("th", string="Availability").find_next("td").string.strip()
+    )
+    Number_of_reviews = (
+        table.find("th", string="Number of reviews").find_next("td").string.strip()
+    )
+
+    image_url = base_url + soup.find("img")["src"].replace("../..", "")
+
+    return {
+        "UPC": upc,
+        "type_De_produit": type_de_produit,
+        "Price_excl_tax": price_excl_tax,
+        "price_incl_tax": price_incl_tax,
+        "Tax": tax,
+        "availability": availability,
+        "Number_of_reviews": Number_of_reviews,
+        "Image_url": image_url,
     }
-]
 
-# Si tu omets l'argument encoding="utf-8", il se pourrait que Python utilise un encodage par défaut différent,
-# ce qui pourrait entraîner des problèmes lors de l'écriture ou de la lecture de fichiers contenant des caractères non latins ou des caractères spéciaux.
-with open("livre_basket.csv", mode="w", newline="", encoding="utf-8") as fichier_csv:
-    fieldnames = [
-        "product_page_url",
-        "universal_product_code",
-        "title",
-        "price_including_tax",
-        "price_excluding_tax",
-        "number_available",
-        "product_description",
-        "category",
-        "review_rating",
-        "image_url",
-    ]
 
-    writer = csv.DictWriter(fichier_csv, fieldnames=fieldnames)
+def download_image(image_url, save_path):
+    response = requests.get(image_url)
+    if response.status_code == 200:
+        with open(save_path, mode="wb") as file:
+            file.write(response.content)
 
-    writer.writeheader()
 
-    writer.writerows(livre_data)
+def save_to_csv(data, filename):
+    with open(filename, mode="w", newline="", encoding="utf-8") as file:
+        fieldnames = [
+            "Category",
+            "Title",
+            "UPC",
+            "Product Type",
+            "Price",
+            "Tax",
+            "Availability",
+            "Number of Reviews",
+            "Image Path",
+        ]
+        csv_writer = csv.DictWriter(file, fieldnames=fieldnames)
+        csv_writer.writeheader()
+        csv_writer.writerows(data)
 
-print(" Fichier CSV 'livre_basket.csv' créé avec succès !")
+
+all_books_data = []
+images_folder = "images"
+
+# création du dossier pour les images
+os.makedirs(images_folder)
+
+
+for category in categories:
+    category_name = category.string.strip()
+    category_url = base_url + category["href"].lstrip("/")
+    print(f"Scraping category: {category_name} - URL: {category_url}")
+    page_number = 1
+
+    while True:
+        # Construction de l'URL de la page
+        page_url = (
+            f"{category_url.replace('index.html', '')}page-{page_number}.html"
+            if page_number > 1
+            else category_url
+        )
+
+        # Récupération du contenu de la page
+        response = requests.get(page_url)
+        if response.status_code != 200:
+            print(f"Failed to retrieve {page_url}")
+            break
+
+        soup = BeautifulSoup(response.text, "html.parser")
+        books = soup.find_all("article", class_="product_pod")
+
+        # Extraction des informations sur les livres
+        for book in books:
+            book_title = book.h3.a["title"]
+            book_url = (
+                base_url + "catalogue/" + book.h3.a["href"].replace("../../../", "")
+            )
+            book_details = livre_data(book_url)
+            image_filename = f"{book_title.replace('/', '_')}.jpg"
+            image_path = os.path.join(images_folder, image_filename)
+            download_image(book_details["Image_url"], image_path)
+            book_data = {
+                "Category": category_name,
+                "Title": book_title,
+                "UPC": book_details["UPC"],
+                "Product Type": book_details["type_De_produit"],
+                "Price": book_details["Price_excl_tax"],
+                "Tax": book_details["Tax"],
+                "Availability": book_details["availability"],
+                "Number of Reviews": book_details["Number_of_reviews"],
+                "Image Path": image_path,
+            }
+            all_books_data.append(book_data)
+
+        # Vérification de la présence de la page suivante
+        next_page = soup.find("li", class_="next")
+        if next_page:
+            page_number += 1
+        else:
+            break
+
+# Sauvegarde des données dans un fichier CSV
+save_to_csv(all_books_data, "books_data.csv")
