@@ -121,7 +121,7 @@ for category in categories:
                 base_url + "catalogue/" + book.h3.a["href"].replace("../../../", "")
             )
             book_info = livre_data(book_url)
-            # Limiter le titre pour éviter les chemins trop longs sous Windows
+            # Limiter le titre pour éviter les chemins trop longs
             short_title = book_title[:100]  # limite à 100 caractères
             image_filename = sanitize_filename(f"{short_title.replace('/', '_')}.jpg")
 
