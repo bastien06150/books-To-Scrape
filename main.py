@@ -22,6 +22,7 @@ categories = soup.find("ul", class_="nav nav-list").find_all("a")[1:]
 
 def livre_data(livre_url):
     response = requests.get(livre_url)
+    response.encoding = "utf-8"
     soup = BeautifulSoup(response.text, "html.parser")
     table = soup.find("table", class_="table table-striped")
     upc = table.find("th", string="UPC").find_next("td").string.strip()
@@ -60,6 +61,7 @@ def livre_data(livre_url):
 
 def download_image(image_url, save_path):
     response = requests.get(image_url)
+    response.encoding = "utf-8"
     if response.status_code == 200:
         with open(save_path, mode="wb") as file:
             file.write(response.content)
@@ -78,7 +80,7 @@ def save_to_csv(data, filename):
             "Number of Reviews",
             "Image Path",
         ]
-        csv_writer = csv.DictWriter(file, fieldnames=fieldnames)
+        csv_writer = csv.DictWriter(file, fieldnames=fieldnames, delimiter=";")
         csv_writer.writeheader()
         csv_writer.writerows(data)
 
@@ -107,6 +109,7 @@ for category in categories:
 
         # Récupération du contenu de la page
         response = requests.get(page_url)
+        response.encoding = "utf-8"
         if response.status_code != 200:
             print(f"echec {page_url}")
             break
