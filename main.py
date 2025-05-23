@@ -2,6 +2,12 @@ import requests
 import os
 import csv
 from bs4 import BeautifulSoup
+import re
+
+
+def sanitize_filename(filename):
+    return re.sub(r'[<>:"/\\|?*#]', "_", filename)
+
 
 # Récupérer le contenu HTML
 base_url = "https://books.toscrape.com/"
@@ -37,6 +43,8 @@ def livre_data(livre_url):
     )
 
     image_url = base_url + soup.find("img")["src"].replace("../..", "")
+
+    print(image_url)
 
     return {
         "UPC": upc,
@@ -84,6 +92,7 @@ os.makedirs(images_folder)
 
 for category in categories:
     category_name = category.string.strip()
+
     category_url = base_url + category["href"].lstrip("/")
     print(f"Scraping category: {category_name} - URL: {category_url}")
     page_number = 1
@@ -99,7 +108,7 @@ for category in categories:
         # Récupération du contenu de la page
         response = requests.get(page_url)
         if response.status_code != 200:
-            print(f"Failed to retrieve {page_url}")
+            print(f"echec {page_url}")
             break
 
         soup = BeautifulSoup(response.text, "html.parser")
@@ -111,19 +120,23 @@ for category in categories:
             book_url = (
                 base_url + "catalogue/" + book.h3.a["href"].replace("../../../", "")
             )
-            book_details = livre_data(book_url)
-            image_filename = f"{book_title.replace('/', '_')}.jpg"
+            book_info = livre_data(book_url)
+            # Limiter le titre pour éviter les chemins trop longs sous Windows
+            short_title = book_title[:100]  # limite à 100 caractères
+            image_filename = sanitize_filename(f"{short_title.replace('/', '_')}.jpg")
+
             image_path = os.path.join(images_folder, image_filename)
-            download_image(book_details["Image_url"], image_path)
+
+            download_image(book_info["Image_url"], image_path)
             book_data = {
                 "Category": category_name,
                 "Title": book_title,
-                "UPC": book_details["UPC"],
-                "Product Type": book_details["type_De_produit"],
-                "Price": book_details["Price_excl_tax"],
-                "Tax": book_details["Tax"],
-                "Availability": book_details["availability"],
-                "Number of Reviews": book_details["Number_of_reviews"],
+                "UPC": book_info["UPC"],
+                "Product Type": book_info["type_De_produit"],
+                "Price": book_info["Price_excl_tax"],
+                "Tax": book_info["Tax"],
+                "Availability": book_info["availability"],
+                "Number of Reviews": book_info["Number_of_reviews"],
                 "Image Path": image_path,
             }
             all_books_data.append(book_data)
@@ -136,4 +149,4 @@ for category in categories:
             break
 
 # Sauvegarde des données dans un fichier CSV
-save_to_csv(all_books_data, "books_data.csv")
+save_to_csv(all_books_data, "books_info.csv")
